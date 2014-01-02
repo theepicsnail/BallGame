@@ -66,8 +66,7 @@ public enum Piece {
 
 		@Override
 		public void click(Board board, int row, int col) {
-			board.setPiece(row, col, EMPTY);
-			board.addSplitter();
+			board.pickupSplitter(row, col);
 		}
 
 	},
@@ -80,9 +79,7 @@ public enum Piece {
 		}
 
 		public void click(Board board, int row, int col) {
-			if (board.removeSplitter()) {
-				board.setPiece(row, col, MOVABLE_SPLITTER);
-			}
+			board.placeSplitter(row, col);
 		}
 	},
 	BALL(10) {
@@ -103,8 +100,7 @@ public enum Piece {
 
 		@Override
 		public void interact(Board board, Ball ball) {
-			board.setPiece(ball.row, ball.col, EMPTY);
-			board.removeTarget();
+			board.removeTarget(ball.row, ball.col);
 			board.removeBall(ball);
 		}
 
@@ -117,7 +113,7 @@ public enum Piece {
 
 	BOX(13) {
 		public void interact(Board board, Ball ball) {
-			board.setPiece(ball.row, ball.col, EMPTY);
+			board.removeBox(ball.row, ball.col);
 			board.removeBall(ball);
 		}
 

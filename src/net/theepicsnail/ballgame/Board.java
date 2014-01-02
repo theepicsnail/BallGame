@@ -2,21 +2,18 @@ package net.theepicsnail.ballgame;
 
 import java.util.ArrayList;
 
-import org.andengine.entity.scene.ITouchArea;
 import org.andengine.entity.Entity;
+import org.andengine.entity.scene.ITouchArea;
 import org.andengine.extension.tmx.TMXLayer;
 import org.andengine.extension.tmx.TMXTile;
 import org.andengine.extension.tmx.TMXTiledMap;
-import org.andengine.extension.tmx.TMXTiledMapProperty;
 import org.andengine.input.touch.TouchEvent;
 import org.andengine.util.color.Color;
 import org.andengine.util.debug.Debug;
 
-import android.util.Log;
-
 public class Board extends Entity implements ITouchArea {
-	GameStateManager gameManager;
-
+	
+	//For ITouchArea
 	@Override
 	public boolean contains(float pX, float pY) {
 		float[] scene = convertSceneToLocalCoordinates(pX, pY);
@@ -30,6 +27,7 @@ public class Board extends Entity implements ITouchArea {
 	boolean dragging_splitter = false;
 	int splitter_pos = 0;
 
+	//Touch events. Picking up/setting down splitters. Starting balls.
 	@Override
 	public boolean onAreaTouched(TouchEvent pSceneTouchEvent,
 			float pTouchAreaLocalX, float pTouchAreaLocalY) {
@@ -69,27 +67,30 @@ public class Board extends Entity implements ITouchArea {
 	}
 
 	public void convertColRowToPosition(float[] f) {
-
 		f[0] *= map.getTileWidth();
 		f[1] *= map.getTileHeight();
 		layer.getLocalToParentTransformation().transform(f);
 	}
 
-	private ArrayList<Ball> balls = new ArrayList<Ball>();
-	private ArrayList<Ball> waitingBalls = new ArrayList<Ball>();
-	private ArrayList<Ball> deadBalls = new ArrayList<Ball>();
-
+	// Constructor, not sure what all is necessary here. 
+	private GameStateManager gameState;
+	private GameResourceManager gameResource;
 	private TMXTiledMap map;
 	private TMXLayer layer;
-	private int splitters = 0;
-
-	public Board(float size, TMXTiledMap map, GameStateManager manager) {
+	
+	public Board(float size, TMXTiledMap map, GameStateManager state, GameResourceManager game) {
+		this.gameResource = game;
 		this.map = map;
-		this.gameManager = manager;
+		this.gameState = state;
+		/*
+		 * Don't delete this code until you've moved it into MAinActivity when we load the level
+		 * This should set the splitter count in the GameResourceManager
+		 
 		for (TMXTiledMapProperty prop : map.getTMXTiledMapProperties()) {
 			if (prop.getName().equals("splitters"))
 				splitters = Integer.parseInt(prop.getValue());
 		}
+		*/
 
 		layer = map.getTMXLayers().get(0);
 		layer.setScaleCenter(0, 0);
@@ -98,26 +99,11 @@ public class Board extends Entity implements ITouchArea {
 		attachChild(layer);
 	}
 
-	public float getScale() {
-		return layer.getScaleX();
-	}
-
-	public void createBall(int row, int col, Direction direction) {
-		Ball b = new Ball(this, row, col, direction);
-		synchronized (waitingBalls) {
-			this.waitingBalls.add(b);
-			this.attachChild(b);
-		}
-	}
-
-	public void removeBall(Ball b) {
-		synchronized (deadBalls) {
-			// Log.e("MAIN", "removeBall has deadBalls lock");
-			deadBalls.add(b);
-			// Log.e("MAIN", "removeBall releasing deadBalls lock");
-		}
-		this.detachChild(b);
-	}
+	//TODO Look into making some manager for dealing with the balls and locks.
+	// Update all of the balls
+	private ArrayList<Ball> balls = new ArrayList<Ball>();
+	private ArrayList<Ball> waitingBalls = new ArrayList<Ball>();
+	private ArrayList<Ball> deadBalls = new ArrayList<Ball>();
 
 	private final float seconds_per_keyframe = 1f;
 	private float since_last_keyframe = 0;
@@ -131,6 +117,8 @@ public class Board extends Entity implements ITouchArea {
 			if (since_last_keyframe > seconds_per_keyframe) {
 				advance = true;
 				since_last_keyframe = 0;
+				if ( balls.size() > 0 )
+				gameResource.time().increment();
 			} else {
 				progress = since_last_keyframe / seconds_per_keyframe;
 			}
@@ -162,6 +150,7 @@ public class Board extends Entity implements ITouchArea {
 		}
 	}
 
+	// Board Piece mutators
 	public Piece getPiece(int row, int col) {
 		if (row < 0 || col < 0 || col >= layer.getTileColumns()
 				|| row >= layer.getTileRows())
@@ -185,19 +174,53 @@ public class Board extends Entity implements ITouchArea {
 
 		layer.submit();
 	}
-
-	public void addSplitter() {
-		this.splitters++;
+	
+	
+	//Board actions
+	public void pickupSplitter(int row, int col) {
+		Debug.d("PickupSplitter(" + row + ", " + col +") = " + getPiece(row, col));
+		if(getPiece(row, col) != Piece.MOVABLE_SPLITTER)
+			return;
+		this.gameResource.splitters().increment();
+		this.setPiece(row, col, Piece.EMPTY);
+	}
+	public void placeSplitter(int row, int col) {
+		if(gameResource.splitters().isZero())
+			return;
+		
+		gameResource.splitters().decrement();
+		this.setPiece(row, col, Piece.MOVABLE_SPLITTER);
+	}
+	public void removeTarget(int row, int col) {
+		if(getPiece(row, col) != Piece.TARGET)
+			return;
+		this.setPiece(row, col, Piece.EMPTY);
+		this.gameResource.targets().decrement();
+		if(this.gameResource.targets().isZero())
+			gameState.onWin();
 	}
 
-	public boolean removeSplitter() {
-		if (this.splitters == 0)
-			return false;
-		this.splitters--;
-		return true;
+	public void createBall(int row, int col, Direction direction) {
+		Ball b = new Ball(this, layer.getScaleX(), row, col, direction);
+		synchronized (waitingBalls) {
+			this.waitingBalls.add(b);
+			this.attachChild(b);
+		}
 	}
 
-	public void removeTarget() {
-		gameManager.onWin();
+	public void removeBall(Ball b) {
+		synchronized (deadBalls) {
+			// Log.e("MAIN", "removeBall has deadBalls lock");
+			deadBalls.add(b);
+			// Log.e("MAIN", "removeBall releasing deadBalls lock");
+		}
+		this.detachChild(b);
+	}
+
+	public void removeBox(int row, int col) {
+		if (getPiece(row, col) != Piece.BOX)
+			return;
+		this.gameResource.boxes().decrement();
+		setPiece(row, col, Piece.EMPTY);
 	}
 }

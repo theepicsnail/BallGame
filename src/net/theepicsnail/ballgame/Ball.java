@@ -13,10 +13,10 @@ public class Ball extends Sprite {
 	public Direction direction;
 	public int row, col;
 
-	public Ball(Board board, int row, int col, Direction direction) {
+	public Ball(Board board, float scale, int row, int col, Direction direction) {
 		super(0,0, BALL_TEXTURE, VERTEX_MANAGER);
 		this.setScaleCenter(0, 0);
-		this.setScale(board.getScale() / 2);
+		this.setScale(scale/2);
 		this.board = board;
 		this.direction = direction;
 		this.row = row;
